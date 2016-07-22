@@ -93,6 +93,12 @@ for i, policy in ipairs({"local", "cluster"}) do
 
       assert(helpers.start_kong())
     end)
+
+    teardown(function()
+      helpers.stop_kong()
+      helpers.clean_prefix()
+    end)
+
     describe("Without authentication (IP address)", function()
       it("blocks if exceeding limit", function()
         for i = 1, 6 do
@@ -264,6 +270,12 @@ for i, policy in ipairs({"local", "cluster"}) do
           })
 
           assert(helpers.start_kong())
+        end)
+
+        teardown(function()
+          helpers.kill_all()
+          helpers.dao:drop_schema()
+          assert(helpers.dao:run_migrations())
         end)
 
         it("does not work if an error occurs", function()
