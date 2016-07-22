@@ -13,7 +13,7 @@ end
 
 wait() -- Wait before starting
 
-for i, policy in ipairs({"local", "cluster", "cluster_redis"}) do
+for i, policy in ipairs({"local", "cluster", "redis"}) do
   describe("Plugin: rate-limiting (access) with policy: "..policy, function()
     setup(function()
       helpers.kill_all()
@@ -43,7 +43,7 @@ for i, policy in ipairs({"local", "cluster", "cluster_redis"}) do
       assert(helpers.dao.plugins:insert {
         name = "rate-limiting",
         api_id = api1.id,
-        config = { policy = policy, minute = 6, cluster_fault_tolerant = false, cluster_redis_host = "127.0.0.1" }
+        config = { policy = policy, minute = 6, cluster_fault_tolerant = false, redis_host = "127.0.0.1" }
       })
 
       local api2 = assert(helpers.dao.apis:insert {
@@ -53,7 +53,7 @@ for i, policy in ipairs({"local", "cluster", "cluster_redis"}) do
       assert(helpers.dao.plugins:insert {
         name = "rate-limiting",
         api_id = api2.id,
-        config = { minute = 3, hour = 5, cluster_fault_tolerant = false, policy = policy, cluster_redis_host = "127.0.0.1" }
+        config = { minute = 3, hour = 5, cluster_fault_tolerant = false, policy = policy, redis_host = "127.0.0.1" }
       })
 
       local api3 = assert(helpers.dao.apis:insert {
@@ -67,13 +67,13 @@ for i, policy in ipairs({"local", "cluster", "cluster_redis"}) do
       assert(helpers.dao.plugins:insert {
         name = "rate-limiting",
         api_id = api3.id,
-        config = { minute = 6, cluster_fault_tolerant = false, policy = policy, cluster_redis_host = "127.0.0.1" }
+        config = { minute = 6, cluster_fault_tolerant = false, policy = policy, redis_host = "127.0.0.1" }
       })
       assert(helpers.dao.plugins:insert {
         name = "rate-limiting",
         api_id = api3.id,
         consumer_id = consumer1.id,
-        config = { minute = 8, cluster_fault_tolerant = false, policy = policy, cluster_redis_host = "127.0.0.1" }
+        config = { minute = 8, cluster_fault_tolerant = false, policy = policy, redis_host = "127.0.0.1" }
       })
 
       local api4 = assert(helpers.dao.apis:insert {
@@ -88,7 +88,7 @@ for i, policy in ipairs({"local", "cluster", "cluster_redis"}) do
         name = "rate-limiting",
         api_id = api4.id,
         consumer_id = consumer1.id,
-        config = { minute = 6, cluster_fault_tolerant = true, policy = policy, cluster_redis_host = "127.0.0.1" }
+        config = { minute = 6, cluster_fault_tolerant = true, policy = policy, redis_host = "127.0.0.1" }
       })
 
       assert(helpers.start_kong())

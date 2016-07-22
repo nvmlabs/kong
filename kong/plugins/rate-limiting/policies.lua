@@ -73,13 +73,13 @@ return {
       return current_metric and current_metric.value or 0
     end
   },
-  ["cluster_redis"] = {
+  ["redis"] = {
     increment = function(conf, api_id, identifier, current_timestamp, value)
       local redis = require "resty.redis"
       local red = redis:new()
 
-      red:set_timeout(conf.cluster_redis_timeout)
-      local ok, err = red:connect("127.0.0.1", 6379)
+      red:set_timeout(conf.redis_timeout)
+      local ok, err = red:connect(conf.redis_host, conf.redis_port)
       if not ok then
         ngx_log(ngx.ERR, "failed to connect to Redis: ", err)
         return
@@ -122,8 +122,8 @@ return {
       local redis = require "resty.redis"
       local red = redis:new()
 
-      red:set_timeout(conf.cluster_redis_timeout)
-      local ok, err = red:connect("127.0.0.1", 6379)
+      red:set_timeout(conf.redis_timeout)
+      local ok, err = red:connect(conf.redis_host, conf.redis_port)
       if not ok then
         ngx_log(ngx.ERR, "failed to connect to Redis: ", err)
         return
