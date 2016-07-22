@@ -29,12 +29,12 @@ local function get_identifier()
   return identifier
 end
 
-local function get_usage(policy, api_id, identifier, current_timestamp, limits)
+local function get_usage(conf, api_id, identifier, current_timestamp, limits)
   local usage = {}
   local stop
 
   for name, limit in pairs(limits) do
-    local current_usage, err = policies[policy].usage(api_id, identifier, current_timestamp, name)
+    local current_usage, err = policies[conf.policy].usage(conf, api_id, identifier, current_timestamp, name)
     if err then
       return nil, nil, err
     end
@@ -71,9 +71,14 @@ function RateLimitingHandler:access(conf)
   local cluster_fault_tolerant = conf.cluster_fault_tolerant
 
   -- Load current metric for configured period
-  conf.policy = nil
-  conf.cluster_fault_tolerant = nil
-  local usage, stop, err = get_usage(policy, api_id, identifier, current_timestamp, conf)
+  local usage, stop, err = get_usage(conf, api_id, identifier, current_timestamp, {
+    second = conf.seconds,
+    minute = conf.minute,
+    hour = conf.hour,
+    day = conf.day,
+    month = conf.month,
+    year = conf.year
+  })
   if err then
     if cluster_fault_tolerant then
       ngx_log(ngx.ERR, "failed to get usage: ", tostring(err))
@@ -96,7 +101,7 @@ function RateLimitingHandler:access(conf)
   end
 
   -- Increment metrics for all periods if the request goes through
-  policies[policy].increment(api_id, identifier, current_timestamp, 1)
+  policies[policy].increment(conf, api_id, identifier, current_timestamp, 1)
 end
 
 return RateLimitingHandler

@@ -20,7 +20,7 @@ local EXPIRATIONS = {
 
 return {
   ["local"] = {
-    increment = function(api_id, identifier, current_timestamp, value)
+    increment = function(conf, api_id, identifier, current_timestamp, value)
       local periods = timestamp.get_timestamps(current_timestamp)
       local ok = true
       for period, period_date in pairs(periods) do
@@ -28,6 +28,8 @@ return {
         if not cache.rawget(cache_key) then
           cache.rawset(cache_key, 0, EXPIRATIONS[period])
         end
+
+        print("INCREMENTING "..cache_key.." with expiration "..EXPIRATIONS[period])
 
         local _, err = cache.incr(cache_key, value)
         if err then
@@ -38,7 +40,7 @@ return {
 
       return ok
     end,
-    usage = function(api_id, identifier, current_timestamp, name)
+    usage = function(conf, api_id, identifier, current_timestamp, name)
       local periods = timestamp.get_timestamps(current_timestamp)
       local cache_key = get_local_key(api_id, identifier, periods[name], name)
       local current_metric, err = cache.rawget(cache_key)
@@ -49,7 +51,7 @@ return {
     end
   },
   ["cluster"] = {
-    increment = function(api_id, identifier, current_timestamp, value)
+    increment = function(conf, api_id, identifier, current_timestamp, value)
       local incr = function(premature, api_id, identifier, current_timestamp, value)
         if premature then return end
         local _, stmt_err = singletons.dao.ratelimiting_metrics:increment(api_id, identifier, current_timestamp, value)
@@ -63,12 +65,82 @@ return {
         ngx_log(ngx.ERR, "failed to create timer: ", err)
       end
     end,
-    usage = function(api_id, identifier, current_timestamp, name)
+    usage = function(conf, api_id, identifier, current_timestamp, name)
       local current_metric, err = singletons.dao.ratelimiting_metrics:find(api_id, identifier, current_timestamp, name)
       if err then
         return nil, err
       end
       return current_metric and current_metric.value or 0
+    end
+  },
+  ["cluster_redis"] = {
+    increment = function(conf, api_id, identifier, current_timestamp, value)
+      local redis = require "resty.redis"
+      local red = redis:new()
+
+      red:set_timeout(conf.cluster_redis_timeout)
+      local ok, err = red:connect("127.0.0.1", 6379)
+      if not ok then
+        ngx_log(ngx.ERR, "failed to connect to Redis: ", err)
+        return
+      end
+
+      local periods = timestamp.get_timestamps(current_timestamp)
+      local ok = true
+      for period, period_date in pairs(periods) do
+        local cache_key = get_local_key(api_id, identifier, period_date, period)
+        local exists, err = red:exists(cache_key)
+        if err then
+          ngx_log(ngx.ERR, "failed to query Redis: ", err)
+          return
+        end
+
+        local ok, err = red:incrby(cache_key, value)
+        if not ok then
+          ngx_log(ngx.ERR, "failed to query Redis: ", err)
+          return
+        end
+
+        if not exists or exists == 0 then
+          local ok, err = red:expire(cache_key, EXPIRATIONS[period])
+          if err then
+            ngx_log(ngx.ERR, "failed to query Redis: ", err)
+            return
+          end
+        end
+      end
+
+      local ok, err = red:set_keepalive(10000, 100)
+      if not ok then
+        ngx_log(ngx.ERR, "failed to set Redis keepalive: ", err)
+        return
+      end
+
+      return true
+    end,
+    usage = function(conf, api_id, identifier, current_timestamp, name)
+      local redis = require "resty.redis"
+      local red = redis:new()
+
+      red:set_timeout(conf.cluster_redis_timeout)
+      local ok, err = red:connect("127.0.0.1", 6379)
+      if not ok then
+        ngx_log(ngx.ERR, "failed to connect to Redis: ", err)
+        return
+      end
+
+      local periods = timestamp.get_timestamps(current_timestamp)
+      local cache_key = get_local_key(api_id, identifier, periods[name], name)
+      local current_metric, err = red:get(cache_key)
+      if err then
+        return nil, err
+      end
+
+      if current_metric == ngx.null then
+        current_metric = nil
+      end
+
+      return current_metric and current_metric or 0
     end
   }
 }

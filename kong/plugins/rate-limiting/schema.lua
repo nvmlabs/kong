@@ -1,5 +1,7 @@
 local Errors = require "kong.dao.errors"
 
+local CLUSTER_REDIS = "cluster_redis"
+
 return {
   fields = {
     second = { type = "number" },
@@ -8,8 +10,11 @@ return {
     day = { type = "number" },
     month = { type = "number" },
     year = { type = "number" },
-    policy = { type = "string", enum = {"local", "cluster"}, default = "cluster"},
-    cluster_fault_tolerant = { type = "boolean", default = true }
+    policy = { type = "string", enum = {"local", "cluster", CLUSTER_REDIS}, default = "cluster"},
+    cluster_fault_tolerant = { type = "boolean", default = true },
+    cluster_redis_host = { type = "string" },
+    cluster_redis_port = { type = "number", default = 6379 },
+    cluster_redis_timeout = { type = "number", default = 2000 }
   },
   self_check = function(schema, plugin_t, dao, is_update)
     local ordered_periods = { "second", "minute", "hour", "day", "month", "year"}
@@ -38,6 +43,16 @@ return {
       return false, Errors.schema(invalid_value)
     elseif invalid_order then
       return false, Errors.schema(invalid_order)
+    end
+
+    if plugin_t.policy == CLUSTER_REDIS then
+      if not plugin_t.cluster_redis_host then
+        return false, Errors.schema "You need to specify both a Redis host"
+      elseif not plugin_t.cluster_redis_port then
+        return false, Errors.schema "You need to specify both a Redis port"
+      elseif not plugin_t.cluster_redis_timeout then
+        return false, Errors.schema "You need to specify both a Redis timeout"
+      end
     end
 
     return true

@@ -13,7 +13,7 @@ end
 
 wait() -- Wait before starting
 
-for i, policy in ipairs({"local", "cluster"}) do
+for i, policy in ipairs({"local", "cluster", "cluster_redis"}) do
   describe("Plugin: rate-limiting (access) with policy: "..policy, function()
     setup(function()
       helpers.kill_all()
@@ -43,7 +43,7 @@ for i, policy in ipairs({"local", "cluster"}) do
       assert(helpers.dao.plugins:insert {
         name = "rate-limiting",
         api_id = api1.id,
-        config = { policy = policy, minute = 6, cluster_fault_tolerant = false }
+        config = { policy = policy, minute = 6, cluster_fault_tolerant = false, cluster_redis_host = "127.0.0.1" }
       })
 
       local api2 = assert(helpers.dao.apis:insert {
@@ -53,7 +53,7 @@ for i, policy in ipairs({"local", "cluster"}) do
       assert(helpers.dao.plugins:insert {
         name = "rate-limiting",
         api_id = api2.id,
-        config = { minute = 3, hour = 5, cluster_fault_tolerant = false, policy = policy }
+        config = { minute = 3, hour = 5, cluster_fault_tolerant = false, policy = policy, cluster_redis_host = "127.0.0.1" }
       })
 
       local api3 = assert(helpers.dao.apis:insert {
@@ -67,13 +67,13 @@ for i, policy in ipairs({"local", "cluster"}) do
       assert(helpers.dao.plugins:insert {
         name = "rate-limiting",
         api_id = api3.id,
-        config = { minute = 6, cluster_fault_tolerant = false, policy = policy }
+        config = { minute = 6, cluster_fault_tolerant = false, policy = policy, cluster_redis_host = "127.0.0.1" }
       })
       assert(helpers.dao.plugins:insert {
         name = "rate-limiting",
         api_id = api3.id,
         consumer_id = consumer1.id,
-        config = { minute = 8, cluster_fault_tolerant = false, policy = policy }
+        config = { minute = 8, cluster_fault_tolerant = false, policy = policy, cluster_redis_host = "127.0.0.1" }
       })
 
       local api4 = assert(helpers.dao.apis:insert {
@@ -88,7 +88,7 @@ for i, policy in ipairs({"local", "cluster"}) do
         name = "rate-limiting",
         api_id = api4.id,
         consumer_id = consumer1.id,
-        config = { minute = 6, cluster_fault_tolerant = true, policy = policy }
+        config = { minute = 6, cluster_fault_tolerant = true, policy = policy, cluster_redis_host = "127.0.0.1" }
       })
 
       assert(helpers.start_kong())
@@ -96,7 +96,7 @@ for i, policy in ipairs({"local", "cluster"}) do
 
     teardown(function()
       helpers.stop_kong()
-      helpers.clean_prefix()
+      --helpers.clean_prefix()
     end)
 
     describe("Without authentication (IP address)", function()
@@ -333,6 +333,54 @@ for i, policy in ipairs({"local", "cluster"}) do
           assert.falsy(res.headers["x-ratelimit-limit-minute"])
           assert.falsy(res.headers["x-ratelimit-remaining-minute"])
         end)
+      end)
+
+    elseif policy == "local" then
+      describe("Expirations", function()
+        local api
+        setup(function()
+          helpers.kill_all()
+          helpers.dao:drop_schema()
+          assert(helpers.dao:run_migrations())
+
+          api = assert(helpers.dao.apis:insert {
+            request_host = "expire1.com",
+            upstream_url = "http://mockbin.com"
+          })
+          assert(helpers.dao.plugins:insert {
+            name = "rate-limiting",
+            api_id = api.id,
+            config = { minute = 6, cluster_fault_tolerant = false }
+          })
+
+          assert(helpers.start_kong())
+        end)
+
+        --[[
+        it("expires a local cache key", function()
+          local periods = timestamp.get_timestamps(current_timestamp)
+
+          local res = assert(helpers.proxy_client():send {
+            method = "GET",
+            path = "/status/200/",
+            headers = {
+              ["Host"] = "expire1.com"
+            }
+          })
+          assert.res_status(200, res)
+          assert.are.same(6, tonumber(res.headers["x-ratelimit-limit-minute"]))
+          assert.are.same(5, tonumber(res.headers["x-ratelimit-remaining-minute"]))
+
+          print("/cache/"..string.format("ratelimit:%s:%s:%s:%s", api.id, "127.0.0.1", periods.minute, "minute"))
+
+          local res = assert(helpers.admin_client():send {
+            method = "GET",
+            path = "/cache/"..string.format("ratelimit:%s:%s:%s:%s", api.id, "127.0.0.1", periods.minute, "minute")
+          })
+          local body = assert.res_status(200, res)
+          print(body)
+        end)
+        --]]
       end)
     end
 
