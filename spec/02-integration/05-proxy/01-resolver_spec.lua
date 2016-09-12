@@ -5,7 +5,8 @@ local meta = require "kong.meta"
 describe("Resolver", function()
   local client
   setup(function()
-    helpers.prepare_prefix()
+    assert(helpers.start_kong())
+    client = helpers.proxy_client()
 
     -- request_host
     assert(helpers.dao.apis:insert {
@@ -19,6 +20,14 @@ describe("Resolver", function()
     })
     assert(helpers.dao.apis:insert {
       request_host = "wildcard.*",
+      upstream_url = "http://mockbin.com"
+    })
+    assert(helpers.dao.apis:insert {
+      request_host = "*.my-test.wildcard.com",
+      upstream_url = "http://mockbin.com"
+    })
+    assert(helpers.dao.apis:insert {
+      request_host = "*.my-test.another-wildcard.com",
       upstream_url = "http://mockbin.com"
     })
     -- request_path
@@ -64,15 +73,11 @@ describe("Resolver", function()
       request_path = "/request/urlenc/%20%20",
       upstream_url = "http://mockbin.com/",
     })
-
-    assert(helpers.start_kong())
-    client = helpers.proxy_client()
   end)
 
   teardown(function()
     if client then client:close() end
-    assert(helpers.stop_kong())
-    helpers.clean_prefix()
+    helpers.stop_kong()
   end)
 
   it("404 if can't find API to proxy", function()
@@ -152,6 +157,26 @@ describe("Resolver", function()
           path = "/status/200",
           headers = {
             ["Host"] = "subdomain.wildcard.com"
+          }
+        })
+        assert.res_status(200, res)
+      end)
+      it("subdomain with dash", function()
+        local res = assert(client:send {
+          method = "GET",
+          path = "/status/200",
+          headers = {
+            ["Host"] = "host.my-test.wildcard.com"
+          }
+        })
+        assert.res_status(200, res)
+      end)
+      it("another subdomain with dash", function()
+        local res = assert(client:send {
+          method = "GET",
+          path = "/status/200",
+          headers = {
+            ["Host"] = "host.my-test.another-wildcard.com"
           }
         })
         assert.res_status(200, res)
@@ -321,7 +346,7 @@ describe("Resolver", function()
 
   it("returns 414 when the URI is too long", function()
     local querystring = ""
-    for i=1,5000 do 
+    for i=1,5000 do
       querystring = string.format("%s%s_%d=%d&", querystring, "param", i, i)
     end
 
@@ -333,5 +358,6 @@ describe("Resolver", function()
       }
     })
     assert.res_status(414, res)
+    assert.match(meta._NAME.."/"..meta._VERSION, res.headers["server"])
   end)
 end)

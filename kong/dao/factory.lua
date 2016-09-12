@@ -1,11 +1,16 @@
 local DAO = require "kong.dao.dao"
 local utils = require "kong.tools.utils"
 local Object = require "kong.vendor.classic"
-local stringy = require "stringy"
 local ModelFactory = require "kong.dao.model_factory"
 
 local CORE_MODELS = {"apis", "consumers", "plugins", "nodes"}
 local _db
+
+-- returns db errors as strings, including the initial `nil`
+local function ret_error_string(db_type, res, err)
+  res, err = DAO.ret_error(db_type, res, err)
+  return res, tostring(err)
+end
 
 local Factory = Object:extend()
 
@@ -24,7 +29,7 @@ local function build_constraints(schemas)
     local constraints = {foreign = {}, unique = {}}
     for col, field in pairs(schema.fields) do
       if type(field.foreign) == "string" then
-        local f_entity, f_field = unpack(stringy.split(field.foreign, ":"))
+        local f_entity, f_field = unpack(utils.split(field.foreign, ":"))
         if f_entity ~= nil and f_field ~= nil then
           local f_schema = schemas[f_entity]
           constraints.foreign[col] = {
@@ -220,7 +225,7 @@ end
 
 local function default_on_migrate(identifier, db_infos)
   local log = require "kong.cmd.utils.log"
-  log("Migrating %s for %s %s",
+  log("migrating %s for %s %s",
       identifier, db_infos.desc, db_infos.name)
 end
 
@@ -236,18 +241,20 @@ function Factory:run_migrations(on_migrate, on_success)
 
   local log = require "kong.cmd.utils.log"
 
+  log.verbose("running datastore migrations")
+
   local migrations_modules = self:migrations_modules()
   local cur_migrations, err = self:current_migrations()
-  if err then return nil, tostring(err) end
+  if err then return ret_error_string(_db.db_type, nil, err) end
 
   local ok, err = migrate(self, "core", migrations_modules, cur_migrations, on_migrate, on_success)
-  if not ok then return nil, tostring(err) end
+  if not ok then return ret_error_string(_db.db_type, nil, err) end
 
   local migrations_ran = 0
   for identifier in pairs(migrations_modules) do
     if identifier ~= "core" then
       local ok, err, n_ran = migrate(self, identifier, migrations_modules, cur_migrations, on_migrate, on_success)
-      if not ok then return nil, tostring(err)
+      if not ok then return ret_error_string(_db.db_type, nil, err)
       else
         migrations_ran = math.max(migrations_ran, n_ran)
       end
@@ -255,8 +262,10 @@ function Factory:run_migrations(on_migrate, on_success)
   end
 
   if migrations_ran > 0 then
-    log("Migrations up to date")
+    log("%d migrations ran", migrations_ran)
   end
+
+  log.verbose("migrations up to date")
 
   return true
 end

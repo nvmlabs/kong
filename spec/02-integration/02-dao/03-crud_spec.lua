@@ -270,6 +270,13 @@ helpers.for_each_dao(function(kong_config)
         assert.falsy(err)
         assert.same({}, rows)
       end)
+      it("handles non-string values", function()
+        local rows, err = apis:find_all {
+          request_host = string.char(105, 213, 205, 149)
+        }
+        assert.falsy(err)
+        assert.same({}, rows)
+      end)
 
       describe("errors", function()
         it("handle invalid arg", function()
@@ -682,6 +689,28 @@ helpers.for_each_dao(function(kong_config)
             apis:delete()
           end, "bad argument #1 to 'delete' (table expected, got nil)")
         end)
+      end)
+    end)
+
+    describe("errors", function()
+      it("returns errors prefixed by the DB type in __tostring()", function()
+        local pg_port = kong_config.pg_port
+        local cassandra_port = kong_config.cassandra_port
+        local cassandra_timeout = kong_config.cassandra_timeout
+        finally(function()
+          kong_config.pg_port = pg_port
+          kong_config.cassandra_port = cassandra_port
+          kong_config.cassandra_timeout = cassandra_timeout
+        end)
+        kong_config.pg_port = 3333
+        kong_config.cassandra_port = 3333
+        kong_config.cassandra_timeout = 1000
+
+        local fact = Factory(kong_config)
+
+        local apis, err = fact.apis:find_all()
+        assert.matches("["..kong_config.database.." error]", err, nil, true)
+        assert.is_nil(apis)
       end)
     end)
   end) -- describe

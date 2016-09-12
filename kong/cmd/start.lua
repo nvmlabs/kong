@@ -12,20 +12,36 @@ local function execute(args)
   }))
 
   local dao = DAOFactory(conf)
-  assert(dao:run_migrations())
-  assert(prefix_handler.prepare_prefix(conf, args.nginx_conf))
-  if conf.dnsmasq then
-    assert(dnsmasq_signals.start(conf))
+  local err
+  xpcall(function()
+    assert(dao:run_migrations())
+    assert(prefix_handler.prepare_prefix(conf, args.nginx_conf))
+    if conf.dnsmasq then
+      assert(dnsmasq_signals.start(conf))
+    end
+    assert(serf_signals.start(conf, dao))
+    assert(nginx_signals.start(conf))
+    log("Kong started")
+  end, function(e)
+    log.verbose("could not start Kong, stopping services")
+    nginx_signals.stop(conf)
+    serf_signals.stop(conf, dao)
+    if conf.dnsmasq then
+      dnsmasq_signals.stop(conf)
+    end
+    err = e -- cannot throw from this function
+    log.verbose("stopped services")
+  end)
+
+  if err then
+    error(err) -- report to main error handler
   end
-  assert(serf_signals.start(conf, dao))
-  assert(nginx_signals.start(conf))
-  log("Started")
 end
 
 local lapp = [[
 Usage: kong start [OPTIONS]
 
-Start Kong (Nginx and other configured services) in configured
+Start Kong (Nginx and other configured services) in the configured
 prefix directory.
 
 Options:

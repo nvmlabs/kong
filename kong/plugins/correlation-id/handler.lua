@@ -1,9 +1,9 @@
 -- Copyright (C) Mashape, Inc.
 
 local BasePlugin = require "kong.plugins.base_plugin"
-local uuid = require "lua_uuid"
 local req_set_header = ngx.req.set_header
 local req_get_headers = ngx.req.get_headers
+local uuid = require("kong.tools.utils").uuid
 
 local CorrelationIdHandler = BasePlugin:extend()
 

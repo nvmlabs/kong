@@ -6,11 +6,31 @@ describe("Utils", function()
     assert.truthy(utils.get_hostname())
   end)
 
+  describe("is_valid_uuid()", function()
+    it("validates UUIDs from jit-uuid", function()
+      assert.True (utils.is_valid_uuid("cbb297c0-a956-486d-ad1d-f9b42df9465a"))
+      assert.False(utils.is_valid_uuid("cbb297c0-a956486d-ad1d-f9b42df9465a"))
+    end)
+    pending("invalidates UUIDs with invalid variants", function()
+      -- this is disabled because existing uuids in the database fail the check upon migrations
+      -- see https://github.com/thibaultcha/lua-resty-jit-uuid/issues/8
+      assert.False(utils.is_valid_uuid("cbb297c0-a956-486d-dd1d-f9b42df9465a")) -- invalid variant
+    end)
+    it("validates UUIDs with invalid variants for backwards-compatibility reasons", function()
+      -- See pending test just above  ^^
+      -- see https://github.com/thibaultcha/lua-resty-jit-uuid/issues/8
+      assert.True(utils.is_valid_uuid("cbb297c0-a956-486d-dd1d-f9b42df9465a"))
+    end)
+    it("considers the null UUID a valid one", function()
+      -- we use the null UUID for plugins' consumer_id when none is set
+      assert.True(utils.is_valid_uuid("00000000-0000-0000-0000-000000000000"))
+    end)
+  end)
+
   describe("https_check", function()
-    
     local old_ngx
     local headers = {}
-    
+
     setup(function()
       old_ngx = ngx
       _G.ngx = {
@@ -22,60 +42,60 @@ describe("Utils", function()
         }
       }
     end)
-    
+
     teardown(function()
       _G.ngx = old_ngx
     end)
-    
+
     describe("without X-Forwarded-Proto header", function()
       setup(function()
         headers["x-forwarded-proto"] = nil
       end)
-      
+
       it("should validate an HTTPS scheme", function()
         ngx.var.scheme = "hTTps" -- mixed casing to ensure case insensitiveness
         assert.is.truthy(utils.check_https())
       end)
-      
+
       it("should invalidate non-HTTPS schemes", function()
-        ngx.var.scheme = "hTTp" 
+        ngx.var.scheme = "hTTp"
         assert.is.falsy(utils.check_https())
         ngx.var.scheme = "something completely different"
         assert.is.falsy(utils.check_https())
       end)
-      
+
       it("should invalidate non-HTTPS schemes with proto header allowed", function()
-        ngx.var.scheme = "hTTp" 
+        ngx.var.scheme = "hTTp"
         assert.is.falsy(utils.check_https(true))
       end)
     end)
-    
+
     describe("with X-Forwarded-Proto header", function()
-        
+
       teardown(function()
         headers["x-forwarded-proto"] = nil
       end)
-      
+
       it("should validate any scheme with X-Forwarded_Proto as HTTPS", function()
         headers["x-forwarded-proto"] = "hTTPs"  -- check mixed casing for case insensitiveness
-        ngx.var.scheme = "hTTps" 
+        ngx.var.scheme = "hTTps"
         assert.is.truthy(utils.check_https(true))
-        ngx.var.scheme = "hTTp" 
+        ngx.var.scheme = "hTTp"
         assert.is.truthy(utils.check_https(true))
         ngx.var.scheme = "something completely different"
         assert.is.truthy(utils.check_https(true))
       end)
-    
+
       it("should validate only https scheme with X-Forwarded_Proto as non-HTTPS", function()
         headers["x-forwarded-proto"] = "hTTP"
-        ngx.var.scheme = "hTTps" 
+        ngx.var.scheme = "hTTps"
         assert.is.truthy(utils.check_https(true))
-        ngx.var.scheme = "hTTp" 
+        ngx.var.scheme = "hTTp"
         assert.is.falsy(utils.check_https(true))
         ngx.var.scheme = "something completely different"
         assert.is.falsy(utils.check_https(true))
       end)
-    
+
       it("should return an error with multiple X-Forwarded_Proto headers", function()
         headers["x-forwarded-proto"] = { "hTTP", "https" }
         ngx.var.scheme = "hTTps"
@@ -83,10 +103,16 @@ describe("Utils", function()
         ngx.var.scheme = "hTTp"
         assert.are.same({ nil, "Only one X-Forwarded-Proto header allowed" }, { utils.check_https(true) })
       end)
-    end)  
+    end)
   end)
 
   describe("string", function()
+    it("checks valid UTF8 values", function()
+      assert.True(utils.validate_utf8("hello"))
+      assert.True(utils.validate_utf8(123))
+      assert.True(utils.validate_utf8(true))
+      assert.False(utils.validate_utf8(string.char(105, 213, 205, 149)))
+    end)
     describe("random_string()", function()
       it("should return a random string", function()
         local first = utils.random_string()
@@ -190,16 +216,6 @@ describe("Utils", function()
   end)
 
   describe("table", function()
-    describe("table_size()", function()
-      it("should return the size of a table", function()
-        assert.are.same(0, utils.table_size(nil))
-        assert.are.same(0, utils.table_size({}))
-        assert.are.same(1, utils.table_size({ foo = "bar" }))
-        assert.are.same(2, utils.table_size({ foo = "bar", bar = "baz" }))
-        assert.are.same(2, utils.table_size({ "foo", "bar" }))
-      end)
-    end)
-
     describe("table_contains()", function()
       it("should return false if a value is not contained in a nil table", function()
         assert.False(utils.table_contains(nil, "foo"))
@@ -278,15 +294,12 @@ describe("Utils", function()
           loaded, mod = utils.load_module_if_exists("kong.does.not.exist")
         end)
         assert.False(loaded)
-        assert.falsy(mod)
+        assert.is.string(mod)
       end)
       it("should throw an error if the module is invalid", function()
-        local loaded, mod
         assert.has.errors(function()
-          loaded, mod = utils.load_module_if_exists("spec.fixtures.invalid-module")
+          utils.load_module_if_exists("spec.fixtures.invalid-module")
         end)
-        assert.falsy(loaded)
-        assert.falsy(mod)
       end)
       it("should load a module if it was found and valid", function()
         local loaded, mod

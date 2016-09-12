@@ -4,15 +4,12 @@ local cjson = require "cjson"
 describe("Admin API", function()
   local client
   setup(function()
-    helpers.prepare_prefix()
     assert(helpers.start_kong())
-
     client = helpers.admin_client()
   end)
   teardown(function()
     if client then client:close() end
-    assert(helpers.stop_kong())
-    helpers.clean_prefix()
+    helpers.stop_kong()
   end)
 
   describe("/plugins/enabled", function()
@@ -24,6 +21,7 @@ describe("Admin API", function()
       local body = assert.res_status(200, res)
       local json = cjson.decode(body)
       assert.is_table(json.enabled_plugins)
+      assert.True(#json.enabled_plugins > 0)
     end)
   end)
 

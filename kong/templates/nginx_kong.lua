@@ -48,6 +48,7 @@ lua_ssl_verify_depth ${{LUA_SSL_VERIFY_DEPTH}};
 > end
 
 init_by_lua_block {
+    require 'resty.core'
     kong = require 'kong'
     kong.init()
 }
@@ -59,7 +60,8 @@ init_worker_by_lua_block {
 server {
     server_name kong;
     listen ${{PROXY_LISTEN}};
-    error_page 500 502 503 504 /50x;
+    error_page 404 408 411 412 413 414 417 /kong_error_handler;
+    error_page 500 502 503 504 /kong_error_handler;
 
 > if ssl then
     listen ${{PROXY_LISTEN_SSL}} ssl;
@@ -99,7 +101,7 @@ server {
         }
     }
 
-    location = /50x {
+    location = /kong_error_handler {
         internal;
         content_by_lua_block {
             require('kong.core.error_handlers')(ngx)
